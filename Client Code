@@ -1,0 +1,87 @@
+#include <iostream>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <string>
+#include <thread>
+
+#pragma comment(lib, "ws2_32.lib")
+
+using namespace std;
+
+bool Initialize() {
+    WSADATA data;
+    return WSAStartup(MAKEWORD(2, 2), &data) == 0;
+}
+
+void SendMsg(SOCKET s) {
+    cout << "Enter your chat name: ";
+    string name;
+    getline(cin, name);
+    string message;
+
+    while (true) {
+        getline(cin, message);
+        string msgToSend = name + ": " + message;
+        int res = send(s, msgToSend.c_str(), msgToSend.length(), 0);
+        if (res == SOCKET_ERROR) {
+            cout << "Error sending message" << endl;
+            break;
+        }
+        if (message == "quit") {
+            cout << "Stopping application" << endl;
+            break;
+        }
+    }
+    closesocket(s);
+    WSACleanup();
+}
+
+void ReceiveMsg(SOCKET s) {
+    char buffer[4096];
+    while (true) {
+        int bytesReceived = recv(s, buffer, sizeof(buffer), 0);
+        if (bytesReceived <= 0) {
+            cout << "Disconnected from server" << endl;
+            break;
+        }
+        string receivedMsg(buffer, bytesReceived);
+        cout << receivedMsg << endl;
+    }
+}
+
+int main() {
+    if (!Initialize()) {
+        cout << "WinSock initialization failed" << endl;
+        return 1;
+    }
+
+    SOCKET s = socket(AF_INET, SOCK_STREAM, 0);
+    if (s == INVALID_SOCKET) {
+        cout << "Invalid socket" << endl;
+        return 1;
+    }
+
+    string serverIp = "127.0.0.1";
+    int port = 12345;
+    sockaddr_in serveraddr;
+    serveraddr.sin_family = AF_INET;
+    serveraddr.sin_port = htons(port);
+    inet_pton(AF_INET, serverIp.c_str(), &serveraddr.sin_addr);
+
+    if (connect(s, (sockaddr*)&serveraddr, sizeof(serveraddr)) == SOCKET_ERROR) {
+        cout << "Not able to connect to server" << endl;
+        closesocket(s);
+        WSACleanup();
+        return 1;
+    }
+
+    cout << "Successfully connected to server" << endl;
+
+    thread sender(SendMsg, s);
+    thread receiver(ReceiveMsg, s);
+
+    sender.join();
+    receiver.join();
+
+    return 0;
+}
